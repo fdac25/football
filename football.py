@@ -399,3 +399,57 @@ print(results[results['position'] == 'RB'].sort_values('predicted_2025_points', 
 print(results[results['position'] == 'WR'].sort_values('predicted_2025_points', ascending=False).head(20))
 print(results[results['position'] == 'TE'].sort_values('predicted_2025_points', ascending=False).head(20))
 print(results[results['position'] == 'DEF'].sort_values('predicted_2025_points', ascending=False).head(20))
+
+ideal_team_comp = {
+    'QB': 2,
+    'RB': 4,
+    'WR': 6,
+    'TE': 2,
+    'DEF': 1
+}
+
+# simulate snake draft
+def snake_draft(predictions, ideal_team_comp, num_teams=8, rounds=15):
+    # dict of teams and their current remaining positions to fill
+    currTeamComps = {}
+    # dict of teams and their picks
+    teamPicks = {}
+    # initialize empty team picks lists and current team comps
+    for i in range(num_teams):
+        teamPicks[f'Team {i+1}'] = []
+        currTeamComps[f'Team {i+1}'] = ideal_team_comp.copy()
+    # generate snake draft order
+    draft_order = []
+    # even rounds: 1 to num_teams, odd rounds: num_teams to 1
+    for currRound in range(rounds):
+        if currRound % 2 == 0:
+            round_order = list(range(num_teams))
+        else:
+            round_order = list(reversed(range(num_teams)))
+        draft_order.extend(round_order)
+    
+    # simulate team picks
+    for team in draft_order:
+        # find next best pick that is needed
+        for index, row in predictions.iterrows():
+            # if best pick position is needed by team
+            if currTeamComps[f'Team {team+1}'][row['position']] > 0:
+                # add the pick
+                teamPicks[f'Team {team+1}'].append(row)
+                # decrement the needed position
+                currTeamComps[f'Team {team+1}'][row['position']] -= 1
+                # remove the player from available predictions
+                predictions = predictions.drop(index)
+                break
+
+    return teamPicks
+
+# run the snake draft
+draft_results = snake_draft(results.sort_values('predicted_2025_points', ascending=False), ideal_team_comp)
+# print the draft results
+print("\nSimulated Draft Results:")
+print("------------------------")
+for team, picks in draft_results.items():
+    print("\n" + team + "\n")
+    for pick in picks:
+        print(f"{pick['position']}: {pick['player_name']}")
