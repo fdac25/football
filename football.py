@@ -95,14 +95,14 @@ def preprocess(year, offensePlayerDF, defenseDF):
    # Average the z-scores for overall passing rating
    qbs['overall_QB_rating'] = (qbs['completion_zScore'] + qbs['yards_per_attempt_zScore'] + qbs['touchdown_zScore'] + qbs['interception_zScore'] + qbs['fumbles_zScore'] + qbs['yards_per_carry_zScore'] + qbs['fantasy_points_zScore']) / 7
 
-   # print("\nTop 10 QBs:")
-   # print(qbs.nlargest(10, 'overall_QB_rating')[['player_name', 'completion_percent', 'yards_per_attempt', 'touchdown_percent', 'interception_percent', 'overall_QB_rating']])
+   # print(f"\nTop 20 QBs in {year}:")
+   # print(qbs.nlargest(20, 'overall_QB_rating')[['player_name', 'completion_percent', 'yards_per_attempt', 'touchdown_percent', 'interception_percent', 'overall_QB_rating']])
 
    # same thing for rb
 
    # Setting up the scoring for positions
    allRBs = (df_yearly_player_offense_stats_filtered['position'] == 'RB')
-   rbsAboveThresh = (df_yearly_player_offense_stats_filtered['season_rushing_yards'] > 300)
+   rbsAboveThresh = (df_yearly_player_offense_stats_filtered['season_rushing_yards'] > 600)
 
    # Filter so we only include running backs that have at least 500 rushing yards
    rbs = df_yearly_player_offense_stats_filtered[allRBs & rbsAboveThresh].copy()
@@ -129,8 +129,8 @@ def preprocess(year, offensePlayerDF, defenseDF):
    # Average the z-scores for overall rushing rating
    rbs['overall_RB_rating'] = (rbs['yards_per_carry_zScore'] + rbs['touchdown_rate_zScore'] + rbs['total_yards_zScore'] + rbs['fumble_zScore'] + rbs['receiving_yards_zScore'] + rbs['fantasy_points_zScore']) / 6
 
-   # print("\nTop 10 RBs:")
-   # print(rbs.nlargest(10, 'overall_RB_rating')[['player_name', 'season_rushing_yards', 'yards_per_carry', 'rush_touchdown_rate', 'receiving_yards_per_game', 'overall_RB_rating']])
+   # print(f"\nTop 20 RBs in {year}:")
+   # print(rbs.nlargest(20, 'overall_RB_rating')[['player_name', 'season_fantasy_points_ppr', 'overall_RB_rating']])
 
    # add them back to main df
    df_yearly_player_offense_stats_filtered['overall_QB_rating'] = 0.0
@@ -260,7 +260,7 @@ def preprocess(year, offensePlayerDF, defenseDF):
    df_yearly_team_defense_stats_filtered['player_name'] = df_yearly_team_defense_stats_filtered['team'] + ' Defense'
    df_yearly_team_defense_stats_filtered['position'] = 'DEF'
    df_yearly_team_defense_stats_filtered['games_played_season'] = 17
-   df_yearly_team_defense_stats_filtered['season_fantasy_points_ppr'] = 0  # calculate if you have data
+   df_yearly_team_defense_stats_filtered['season_fantasy_points_ppr'] = df_yearly_team_defense_stats_filtered['overall_DEF_rating']  # calculate if you have data
    df_yearly_team_defense_stats_filtered['overall_QB_rating'] = 0.0
    df_yearly_team_defense_stats_filtered['overall_RB_rating'] = 0.0
    df_yearly_team_defense_stats_filtered['overall_WR_rating'] = 0.0
@@ -304,84 +304,98 @@ def one_hot_encode(df):
    df_encoded = pd.get_dummies(df, columns=['position'], prefix='pos')
    return df_encoded
 
-df_encoded_2021 = one_hot_encode(df_processed_2021)
-df_encoded_2022 = one_hot_encode(df_processed_2022)
-df_encoded_2023 = one_hot_encode(df_processed_2023)
-df_encoded_2024 = one_hot_encode(df_processed_2024)
+# combine all years before matching players
+all_years = pd.concat([df_processed_2021, df_processed_2022, df_processed_2023, df_processed_2024])
 
-# print(df_encoded_2021.head(50))
+# Get global min/max. calculate these outside bc they dont change
+global_games_min = all_years['games_played_season'].min()
+global_games_max = all_years['games_played_season'].max()
+global_points_min = all_years['season_fantasy_points_ppr'].min()
+global_points_max = all_years['season_fantasy_points_ppr'].max()
 
 # normalize the games played and fantasy points
 def normalize_features(df):
-   games_played_season_min = df['games_played_season'].min()
-   games_played_season_max = df['games_played_season'].max()
-   season_fantasy_points_ppr_min = df['season_fantasy_points_ppr'].min()
-   season_fantasy_points_ppr_max = df['season_fantasy_points_ppr'].max()
-   df['games_played_season'] = (df['games_played_season'] - games_played_season_min) / (games_played_season_max - games_played_season_min)
-   df['season_fantasy_points_ppr'] = (df['season_fantasy_points_ppr'] - season_fantasy_points_ppr_min) / (season_fantasy_points_ppr_max - season_fantasy_points_ppr_min)
-   return df
+    df['games_played_season'] = (df['games_played_season'] - global_games_min) / (global_games_max - global_games_min)
+    df['season_fantasy_points_ppr'] = (df['season_fantasy_points_ppr'] - global_points_min) / (global_points_max - global_points_min)
+    return df
 
-
-# Save player names before doing anything
-names_2021 = df_processed_2021['player_name'].copy()
-names_2022 = df_processed_2022['player_name'].copy()
-names_2023 = df_processed_2023['player_name'].copy()
+# Save player names for later
 names_2024 = df_processed_2024['player_name'].copy()
 
 # Match players: find who played in both year n and year n+1
 def match_players(df1, df2):
-    # Only keep players who appear in both dataframes
-    common_players = set(df1['player_name']) & set(df2['player_name'])
-    
-    df1_matched = df1[df1['player_name'].isin(common_players)].sort_values('player_name').reset_index(drop=True)
-    df2_matched = df2[df2['player_name'].isin(common_players)].sort_values('player_name').reset_index(drop=True)
-    
-    return df1_matched, df2_matched
-
-# Match players for each year pair
-df_2021_matched, df_2022_matched = match_players(df_processed_2021, df_processed_2022)
-df_2022_matched2, df_2023_matched = match_players(df_processed_2022, df_processed_2023)
-df_2023_matched2, df_2024_matched = match_players(df_processed_2023, df_processed_2024)
-
-# Drop player_name and one-hot encode
-df_2021_encoded = one_hot_encode(df_2021_matched.drop(columns=['player_name']))
-df_2022_encoded = one_hot_encode(df_2022_matched.drop(columns=['player_name']))
-df_2022_encoded_v2 = one_hot_encode(df_2022_matched2.drop(columns=['player_name']))
-df_2023_encoded = one_hot_encode(df_2023_matched.drop(columns=['player_name']))
-df_2023_encoded_v2 = one_hot_encode(df_2023_matched2.drop(columns=['player_name']))
-df_2024_encoded = one_hot_encode(df_2024_matched.drop(columns=['player_name']))
+    merged = df1.merge(
+        df2[['player_name', 'season_fantasy_points_ppr']], 
+        on='player_name', 
+        how='left',
+        suffixes=('', '_next')
+    )
+    mean_points = df2['season_fantasy_points_ppr'].mean()
+    merged['season_fantasy_points_ppr_next'] = merged['season_fantasy_points_ppr_next'].fillna(mean_points)
+    return merged
 
 # Normalize
-df_normalized_2021 = normalize_features(df_2021_encoded)
-df_normalized_2022 = normalize_features(df_2022_encoded)
-df_normalized_2022_v2 = normalize_features(df_2022_encoded_v2)
-df_normalized_2023 = normalize_features(df_2023_encoded)
-df_normalized_2023_v2 = normalize_features(df_2023_encoded_v2)
-df_normalized_2024 = normalize_features(df_2024_encoded)
+df_normalized_2021 = normalize_features(df_processed_2021)
+df_normalized_2022 = normalize_features(df_processed_2022)
+df_normalized_2023 = normalize_features(df_processed_2023)
+df_normalized_2024 = normalize_features(df_processed_2024)
 
-# Create training data
-X_train = pd.concat([df_normalized_2021, df_normalized_2022_v2, df_normalized_2023_v2])
-y_train = pd.concat([
-    df_normalized_2022['season_fantasy_points_ppr'],
-    df_normalized_2023['season_fantasy_points_ppr'],
-    df_normalized_2024['season_fantasy_points_ppr']
+# Match players
+df_2021_2022 = match_players(df_normalized_2021, df_normalized_2022)
+df_2022_2023 = match_players(df_normalized_2022, df_normalized_2023)
+df_2023_2024 = match_players(df_normalized_2023, df_normalized_2024)
+
+# Drop player_name and encode
+df_2021_encoded = one_hot_encode(df_2021_2022.drop(columns=['player_name']))
+df_2022_encoded = one_hot_encode(df_2022_2023.drop(columns=['player_name']))
+df_2023_encoded = one_hot_encode(df_2023_2024.drop(columns=['player_name']))
+
+
+# Split X and y
+X_train = pd.concat([
+    df_2021_encoded.drop(columns=['season_fantasy_points_ppr', 'season_fantasy_points_ppr_next']),
+    df_2022_encoded.drop(columns=['season_fantasy_points_ppr', 'season_fantasy_points_ppr_next']),
+    df_2023_encoded.drop(columns=['season_fantasy_points_ppr', 'season_fantasy_points_ppr_next'])
 ])
 
-X_train = X_train.drop(columns=['season_fantasy_points_ppr'])
+y_train = pd.concat([
+    df_2021_encoded['season_fantasy_points_ppr_next'],
+    df_2022_encoded['season_fantasy_points_ppr_next'],
+    df_2023_encoded['season_fantasy_points_ppr_next']
+])
+
+sample_weights = np.concatenate([
+    np.ones(len(df_2021_encoded)) * 0.25,
+    np.ones(len(df_2022_encoded)) * 0.5,
+    np.ones(len(df_2023_encoded)) * 1
+])
+
 
 # Train
-model = sklearn.ensemble.RandomForestRegressor(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
+model = sklearn.ensemble.RandomForestRegressor(n_estimators=700, random_state=42, bootstrap=True, criterion='squared_error', max_depth=10, min_samples_leaf=5, min_samples_split=15)
+model.fit(X_train, y_train, sample_weight=sample_weights)
 
 # Predict 2025
 df_2025_encoded = one_hot_encode(df_processed_2024.drop(columns=['player_name']))
-df_2025_normalized = normalize_features(df_2025_encoded)
-data_2025 = df_2025_normalized.drop(columns=['season_fantasy_points_ppr'])
+data_2025 = df_2025_encoded.drop(columns=['season_fantasy_points_ppr'])
 predictions_2025 = model.predict(data_2025)
 
-# Add names back
+# Add denormalization (shows ppr instead of value 0 to 1):
+def denormalize_points(normalized_value):
+    return normalized_value * (global_points_max - global_points_min) + global_points_min
+
+predictions_2025_denorm = denormalize_points(predictions_2025)
+
+# Update results to use denormalized predictions:
 results = pd.DataFrame({
     'player_name': names_2024,
-    'predicted_2025_points': predictions_2025
+    'position': df_processed_2024['position'],
+    'predicted_2025_points': predictions_2025_denorm
 })
-print(results.nlargest(40, 'predicted_2025_points'))
+
+# print(results.head(20))
+print(results[results['position'] == 'QB'].sort_values('predicted_2025_points', ascending=False).head(20))
+print(results[results['position'] == 'RB'].sort_values('predicted_2025_points', ascending=False).head(20))
+print(results[results['position'] == 'WR'].sort_values('predicted_2025_points', ascending=False).head(20))
+print(results[results['position'] == 'TE'].sort_values('predicted_2025_points', ascending=False).head(20))
+print(results[results['position'] == 'DEF'].sort_values('predicted_2025_points', ascending=False).head(20))
