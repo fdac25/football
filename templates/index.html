@@ -180,25 +180,46 @@
          <option value="6">6 Teams</option>
          <option value="8">8 Teams</option>
          <option value="10">10 Teams</option>
-         <option value="12">12 Teams</option>
       </select>
       <button type="submit" class="button">Run Draft Simulation</button>
    </form>
-   {% if draft_results %}
+   {% if draft_starters %}
       <div class="topPicks">
          <h2>Simulated Draft Results</h2>
          <div class="draft-results">
-            {% for team, players in draft_results.items() %}
+            {% for team, players in draft_starters.items() %}
                <div class="team-box">
                   <h3>{{ team }}</h3>
+                  <h4>Starters</h4>
                   <ul>
-                     {% for player in players %}
-                        <li>
-                           <span>{{ player['position'] }}: {{ player['player_name'] }}</span>
-                           {% if player['position'] != 'DEF' %}
-                              <span>{{ "%.2f"|format(player['predicted_2025_points']) }}</span>
-                           {% endif %}
-                        </li>
+                     {% set position_order = ['QB', 'RB', 'WR', 'TE', 'DEF'] %}
+                     {% for position in position_order %}
+                        {% for player in players %}
+                           {% if player['position'] == position %}
+                              <li>
+                                 <span>{{ player['position'] }}: {{ player['player_name'] }}</span>
+                                 {% if player['position'] != 'DEF' %}
+                                    <span>{{ "%.2f"|format(player['predicted_2025_points']) }}</span>
+                                 {% endif %}
+                              </li>
+                           {%endif%}
+                        {% endfor %}
+                     {% endfor %}
+                  </ul>
+                  <h4>Bench</h4>
+                  <ul>
+                     {% set bench_position_order = ['QB', 'RB', 'WR', 'TE'] %}
+                     {% for position in bench_position_order %}
+                        {% for player in draft_bench[team] %}
+                           {% if player['position'] == position %}
+                              <li>
+                                 <span>{{ player['position'] }}: {{ player['player_name'] }}</span>
+                                 {% if player['position'] != 'DEF' %}
+                                    <span>{{ "%.2f"|format(player['predicted_2025_points']) }}</span>
+                                 {% endif %}
+                              </li>
+                           {%endif%}
+                        {% endfor %}
                      {% endfor %}
                   </ul>
                </div>

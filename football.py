@@ -104,7 +104,7 @@ def main(num_teams):
 
       # Setting up the scoring for positions
       allRBs = (df_yearly_player_offense_stats_filtered['position'] == 'RB')
-      rbsAboveThresh = (df_yearly_player_offense_stats_filtered['season_rushing_yards'] > 100) # original 600
+      rbsAboveThresh = (df_yearly_player_offense_stats_filtered['season_rushing_yards'] > 490) # original 600
 
       # Filter so we only include running backs that have at least 500 rushing yards
       rbs = df_yearly_player_offense_stats_filtered[allRBs & rbsAboveThresh].copy()
@@ -150,8 +150,8 @@ def main(num_teams):
       # Receiving rating for WRs
       # Setting up the scoring for positions
       allWRs = (df_yearly_player_offense_stats_filtered['position'] == 'WR')
-      wrsAboveThresh = (df_yearly_player_offense_stats_filtered['season_receiving_yards'] > 100) # original was 500
-      wrsAboveRecThresh = (df_yearly_player_offense_stats_filtered['season_receptions'] > 24) # original was 48
+      wrsAboveThresh = (df_yearly_player_offense_stats_filtered['season_receiving_yards'] > 450) # original was 500
+      wrsAboveRecThresh = (df_yearly_player_offense_stats_filtered['season_receptions'] > 40) # original was 48
 
       # Filter so we only include running backs that have at least 500 receiving yards
       wideRec = df_yearly_player_offense_stats_filtered[allWRs & wrsAboveThresh & wrsAboveRecThresh].copy()
@@ -417,13 +417,32 @@ def main(num_teams):
 
    # simulate snake draft
    def snake_draft(predictions, ideal_team_comp, num_teams, rounds=15):
+      starters = {
+         'QB': 1,
+         'RB': 2,
+         'WR': 3,
+         'TE': 1,
+         'DEF': 1
+      }
+
+      bench = {
+         'QB': 1,
+         'RB': 2,
+         'WR': 3,
+         'TE': 1,
+      }
+
       # dict of teams and their current remaining positions to fill
       currTeamComps = {}
-      # dict of teams and their picks
-      teamPicks = {}
+
+      #dict of teams and their starters
+      teamStarters = {}
+      teamBench = {}
+
       # initialize empty team picks lists and current team comps
       for i in range(num_teams):
-         teamPicks[f'Team {i+1}'] = []
+         teamStarters[f'Team {i+1}'] = []
+         teamBench[f'Team {i+1}'] = []
          currTeamComps[f'Team {i+1}'] = ideal_team_comp.copy()
       # generate snake draft order
       draft_order = []
@@ -442,18 +461,26 @@ def main(num_teams):
                # if best pick position is needed by team
                if currTeamComps[f'Team {team+1}'][row['position']] > 0:
                   # add the pick
-                  teamPicks[f'Team {team+1}'].append(row)
+                  position = row['position']
+                  currentStarters = len([p for p in teamStarters[f'Team {team+1}'] if p['position'] == position])
+
+                  if position in starters and currentStarters < starters[position]:
+                     teamStarters[f'Team {team+1}'].append(row)
+                  else:
+                     teamBench[f'Team {team+1}'].append(row)
+
                   # decrement the needed position
                   currTeamComps[f'Team {team+1}'][row['position']] -= 1
                   # remove the player from available predictions
                   predictions = predictions.drop(index)
                   break
 
-      return teamPicks
+      return teamStarters, teamBench
+
 
    if(num_teams != 0):
       # run the snake draft
-      draft_results = snake_draft(results.sort_values('predicted_2025_points', ascending=False), ideal_team_comp, num_teams)
+      draft_starters, draft_bench = snake_draft(results.sort_values('predicted_2025_points', ascending=False), ideal_team_comp, num_teams)
       # print the draft results
       # print("\nSimulated Draft Results:")
       # print("------------------------")
@@ -462,7 +489,12 @@ def main(num_teams):
          # for pick in picks: 
             # print(f"{pick['position']}: {pick['player_name']}")
    else:
-      draft_results = {}
+      draft_starters = {}
+      draft_bench = {}
+
+   # split the draft results into starters and bench dictionaries
+
+   
 
    # convert pandas dataframes to dictionaries for html unraveling
    QB_results = QB_results.to_dict(orient='records')
@@ -471,4 +503,4 @@ def main(num_teams):
    TE_results = TE_results.to_dict(orient='records')
    DEF_results = DEF_results.to_dict(orient='records')
 
-   return (draft_results, QB_results, RB_results, WR_results, TE_results, DEF_results)
+   return (draft_starters, draft_bench, QB_results, RB_results, WR_results, TE_results, DEF_results)
