@@ -80,7 +80,6 @@ def main(num_teams):
       qbs['touchdown_percent'] = (qbs['season_pass_touchdown'] / qbs['season_pass_attempts']) * 100
       qbs['interception_percent'] = (qbs['season_interception'] / qbs['season_pass_attempts']) * 100
       qbs['yards_per_carry'] = qbs['season_rushing_yards'] / qbs['season_rush_attempts']
-      # will use fumbles stats too but already exists so dont need to make column
       # print(qbs[['player_name', 'completion_percent', 'yards_per_attempt', 'touchdown_percent', 'interception_percent', 'season_fumble_lost']].head())
 
       # we decided to use z score because it standardizes the data making it easier to compare to one another
@@ -94,8 +93,9 @@ def main(num_teams):
       # Fumbles as raw count (flip sign because fewer is better)
       qbs['fumbles_zScore'] = -1 * ((qbs['season_fumble_lost'] - qbs['season_fumble_lost'].mean()) / qbs['season_fumble_lost'].std())
 
-      # Average the z-scores for overall passing rating
-      qbs['overall_QB_rating'] = (qbs['completion_zScore'] + qbs['yards_per_attempt_zScore'] + qbs['touchdown_zScore'] + qbs['interception_zScore'] + qbs['fumbles_zScore'] + qbs['yards_per_carry_zScore'] + qbs['fantasy_points_zScore']) / 7
+      # Average the z-scores for overall QB rating
+      qbs['overall_QB_rating'] = (qbs['completion_zScore'] + qbs['yards_per_attempt_zScore'] + qbs['touchdown_zScore'] + qbs['interception_zScore'] + 
+                                  qbs['fumbles_zScore'] + qbs['yards_per_carry_zScore'] + qbs['fantasy_points_zScore']) / 7
 
       # print(f"\nTop 20 QBs in {year}:")
       # print(qbs.nlargest(20, 'overall_QB_rating')[['player_name', 'completion_percent', 'yards_per_attempt', 'touchdown_percent', 'interception_percent', 'overall_QB_rating']])
@@ -262,7 +262,7 @@ def main(num_teams):
       df_yearly_team_defense_stats_filtered['player_name'] = df_yearly_team_defense_stats_filtered['team'] + ' Defense'
       df_yearly_team_defense_stats_filtered['position'] = 'DEF'
       df_yearly_team_defense_stats_filtered['games_played_season'] = 17
-      df_yearly_team_defense_stats_filtered['season_fantasy_points_ppr'] = df_yearly_team_defense_stats_filtered['overall_DEF_rating']  # calculate if you have data
+      df_yearly_team_defense_stats_filtered['season_fantasy_points_ppr'] = df_yearly_team_defense_stats_filtered['overall_DEF_rating']
       df_yearly_team_defense_stats_filtered['overall_QB_rating'] = 0.0
       df_yearly_team_defense_stats_filtered['overall_RB_rating'] = 0.0
       df_yearly_team_defense_stats_filtered['overall_WR_rating'] = 0.0
@@ -374,7 +374,10 @@ def main(num_teams):
 
 
    # Train
-   model = sklearn.ensemble.RandomForestRegressor(n_estimators=700, random_state=42, bootstrap=True, criterion='squared_error', max_depth=10, min_samples_leaf=5, min_samples_split=15)
+   model = sklearn.ensemble.RandomForestRegressor(n_estimators=700, random_state=42,
+                                                   bootstrap=True, criterion='squared_error',
+                                                   max_depth=10, min_samples_leaf=5,
+                                                   min_samples_split=15)
    model.fit(X_train, y_train, sample_weight=sample_weights)
 
    # Predict 2025
@@ -407,6 +410,8 @@ def main(num_teams):
    WR_results = results[results['position'] == 'WR'].sort_values('predicted_2025_points', ascending=False)
    TE_results = results[results['position'] == 'TE'].sort_values('predicted_2025_points', ascending=False)
    DEF_results = results[results['position'] == 'DEF'].sort_values('predicted_2025_points', ascending=False)
+
+
    ideal_team_comp = {
       'QB': 2,
       'RB': 4,
@@ -414,28 +419,26 @@ def main(num_teams):
       'TE': 2,
       'DEF': 1
    }
+   starters = {
+      'QB': 1,
+      'RB': 2,
+      'WR': 3,
+      'TE': 1,
+      'DEF': 1
+   }
+   bench = {
+      'QB': 1,
+      'RB': 2,
+      'WR': 3,
+      'TE': 1,
+   }
 
    # simulate snake draft
    def snake_draft(predictions, ideal_team_comp, num_teams, rounds=15):
-      starters = {
-         'QB': 1,
-         'RB': 2,
-         'WR': 3,
-         'TE': 1,
-         'DEF': 1
-      }
-
-      bench = {
-         'QB': 1,
-         'RB': 2,
-         'WR': 3,
-         'TE': 1,
-      }
-
       # dict of teams and their current remaining positions to fill
       currTeamComps = {}
 
-      #dict of teams and their starters
+      # dict of teams and their starters
       teamStarters = {}
       teamBench = {}
 
@@ -444,8 +447,10 @@ def main(num_teams):
          teamStarters[f'Team {i+1}'] = []
          teamBench[f'Team {i+1}'] = []
          currTeamComps[f'Team {i+1}'] = ideal_team_comp.copy()
+
       # generate snake draft order
       draft_order = []
+
       # even rounds: 1 to num_teams, odd rounds: num_teams to 1
       for currRound in range(rounds):
          if currRound % 2 == 0:
@@ -462,7 +467,11 @@ def main(num_teams):
                if currTeamComps[f'Team {team+1}'][row['position']] > 0:
                   # add the pick
                   position = row['position']
-                  currentStarters = len([p for p in teamStarters[f'Team {team+1}'] if p['position'] == position])
+                  # Count how many starters at this position the team already has
+                  currentStarters = 0
+                  for player in teamStarters[f'Team {team+1}']:
+                     if player['position'] == position:
+                        currentStarters += 1
 
                   if position in starters and currentStarters < starters[position]:
                      teamStarters[f'Team {team+1}'].append(row)
